@@ -1,0 +1,85 @@
+{
+  "market_median": 50.71428571428572,
+  "conditions_median": 48.11991028295377,
+  "priority_by_scheme": {
+    "equal": [
+      "BM",
+      "ET",
+      "GO",
+      "KI",
+      "LA",
+      "MK",
+      "ML",
+      "MP",
+      "MR",
+      "OL",
+      "OR",
+      "OS",
+      "RI",
+      "UI"
+    ],
+    "access_heavy": [
+      "BM",
+      "DW",
+      "ET",
+      "GO",
+      "LA",
+      "MK",
+      "ML",
+      "MP",
+      "MR",
+      "OL",
+      "OR",
+      "OS",
+      "RI",
+      "UI"
+    ],
+    "service_heavy": [
+      "BM",
+      "ET",
+      "GL",
+      "GO",
+      "KI",
+      "LA",
+      "MK",
+      "ML",
+      "MR",
+      "OL",
+      "OR",
+      "OS",
+      "RI",
+      "SR",
+      "UI"
+    ]
+  },
+  "priority_stable": [
+    "BM",
+    "ET",
+    "GO",
+    "LA",
+    "MK",
+    "ML",
+    "MR",
+    "OL",
+    "OR",
+    "OS",
+    "RI",
+    "UI"
+  ],
+  "weight_spearman": {
+    "equal_vs_access_heavy": 0.9701513428396465,
+    "equal_vs_service_heavy": 0.9735106289913393,
+    "access_heavy_vs_service_heavy": 0.9191321844108126
+  },
+  "reference_median": {
+    "service": 76.78571428571428,
+    "feeder": 66.9047619047619,
+    "walk": 65.71428571428572,
+    "parking": 65.21739130434783,
+    "fare": 68.57142857142857
+  },
+  "reference_n": 21,
+  "weekday": "20261118",
+  "saturday": "20261121",
+  "sunday": "20261122"
+}
