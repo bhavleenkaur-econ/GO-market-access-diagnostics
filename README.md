@@ -1,4 +1,4 @@
-# Where GO ridership cannot show up yet
+# Identifying stations where travel-market potential exceeds current access, service, and connectivity conditions.
 
 A station scorecard for GO Transit and UP Express. I ask where the surrounding travel market is ahead of the conditions that would let that market show up as ridership, and I name the condition that is furthest behind.
 
