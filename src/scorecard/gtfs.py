@@ -70,6 +70,53 @@ def _iso(d):
     return f"{d[:4]}-{d[4:6]}-{d[6:]}"
 
 
+def _clock(sec):
+    if sec is None or sec != sec:
+        return None
+    sec = int(sec)
+    next_day = ""
+    if sec >= 24 * 3600:
+        sec -= 24 * 3600
+        next_day = " next day"
+    return f"{sec // 3600:02d}:{(sec % 3600) // 60:02d}{next_day}"
+
+
+def apply_service_quality(service):
+    """Fill headways when a band has fewer than two trains, and turn the span into clock times.
+
+    One departure has no gap. I use the length of the band, so a single peak train ranks as
+    infrequent rather than as a missing value.
+    """
+    out = service.copy()
+    am_window = (C.AM_PEAK[1] - C.AM_PEAK[0]) / 60
+    md_window = (C.MIDDAY[1] - C.MIDDAY[0]) / 60
+    for value, count, window in (
+        ("am_headway_min", "am_gap_n", am_window),
+        ("am_max_gap_min", "am_gap_n", am_window),
+        ("midday_headway_min", "midday_gap_n", md_window),
+        ("midday_max_gap_min", "midday_gap_n", md_window),
+    ):
+        if value not in out.columns:
+            out[value] = pd.NA
+        if count not in out.columns:
+            out[count] = 0
+        thin = out[count].fillna(0).lt(1) | out[value].isna()
+        out.loc[thin, value] = window
+    out["span_hours"] = (out.last_departure_sec - out.first_departure_sec) / 3600
+    out["span_hours"] = out["span_hours"].fillna(0)
+    for col in ("saturday_span_hours", "sunday_span_hours"):
+        if col not in out.columns:
+            out[col] = 0
+        out[col] = out[col].fillna(0)
+    out["weekend_span_hours"] = (out["saturday_span_hours"] + out["sunday_span_hours"]) / 2
+    out["first_departure_clock"] = out["first_departure_sec"].map(_clock)
+    out["last_departure_clock"] = out["last_departure_sec"].map(_clock)
+    out["offpeak_weekend_departures"] = (
+        out.midday_departures + out.evening_departures + out.saturday_departures + out.sunday_departures
+    )
+    return out
+
+
 def build_rail(con):
     """Load GO and UP, build rail_events, return per-station service metrics and station points."""
     load_feed(con, "go")
@@ -83,11 +130,14 @@ def build_rail(con):
             am0=C.AM_PEAK[0], am1=C.AM_PEAK[1], md0=C.MIDDAY[0], md1=C.MIDDAY[1], ev0=C.EVENING[0],
         )
     ).fetchdf()
-    service["span_hours"] = (service.last_departure_sec - service.first_departure_sec) / 3600
-    service["offpeak_weekend_departures"] = (
-        service.midday_departures + service.evening_departures + service.saturday_departures + service.sunday_departures
-    )
-    return service
+    quality = con.execute(
+        sql(
+            "service_quality",
+            am0=C.AM_PEAK[0], am1=C.AM_PEAK[1], md0=C.MIDDAY[0], md1=C.MIDDAY[1],
+        )
+    ).fetchdf()
+    service = service.merge(quality, on="station_id", how="left")
+    return apply_service_quality(service)
 
 
 def rail_stations(con):

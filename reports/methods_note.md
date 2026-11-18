@@ -9,7 +9,7 @@ I wanted to know where a GO or UP station has a travel market that the current a
 ## Order of work
 
 1. I downloaded GO and UP Express GTFS, 14 local GTFS feeds, the December 2019 parking file, census geography and profile values, commuting flows, jobs by place of work, and the Geofabrik Ontario OpenStreetMap extract.
-2. I counted rail trips in DuckDB for one Wednesday, one Saturday, and one Sunday in the current GO feed.
+2. I measured headway, the longest gap, span, and scheduled time to Union in DuckDB for one Wednesday, one Saturday, and one Sunday in the current GO feed.
 3. I counted local-bus arrivals within 250 m and the scheduled wait to the next train toward Union.
 4. I built an 800 m walkshed on the walking network, and a 10 km station shed.
 5. I apportioned census counts into those catchments by area.
@@ -17,7 +17,18 @@ I wanted to know where a GO or UP station has a travel market that the current a
 
 ## Service
 
-GO publishes service by calendar date, not by a weekly calendar. I used Wednesday 18 November 2026, Saturday 21 November 2026, and Sunday 22 November 2026. All three dates are marked as service in the feed. A departure is a stop event where the passenger can board. Peak trips toward Union are weekday departures between 06:00 and 09:00 on trips that reach Union later in the same trip.
+GO publishes service by calendar date, not by a weekly calendar. I used Wednesday 18 November 2026, Saturday 21 November 2026, and Sunday 22 November 2026. All three dates are marked as service in the feed. A departure is a stop event where the passenger can board. A trip toward Union reaches Union later on the same trip.
+
+I score timetable quality, not trip counts. Trip counts stay in the station table as evidence. For weekday departures toward Union I measure:
+
+- the median gap between consecutive boardable departures in the AM peak, 06:00 to 09:00
+- the longest such gap in the midday, 09:30 to 15:00
+- the weekday span, last departure minus first departure
+- the weekend span, the mean of the Saturday span and the Sunday span, with a missing day counted as zero
+
+A gap counts in a band only when both ends fall inside the band, so the overnight does not become a headway. The first train of the day has no previous train. If a band has fewer than two departures, I fill the headway and the longest gap with the length of the band, 180 minutes in the peak and 330 minutes at midday. A single train then ranks as infrequent, rather than as a missing value. First and last departure are stored as clock times. I quote them. I do not score them separately, because they are the two ends of the span.
+
+Scheduled in-vehicle time is the median of Union arrival minus the station departure, on weekday trips toward Union. It is a travel time, so it goes into the generalized cost, not into the service score.
 
 Local feeds are not on the same calendar. For each agency I took the Wednesday in the feed with the most trips, and I recorded that date in `data/processed/feeder_service_dates.csv`. Guelph Transit's feed, for example, is an older schedule than the November GO feed. The connection analysis uses each operator's own representative weekday.
 
@@ -45,15 +56,19 @@ Work from home is reported beside the score. I do not subtract it from the marke
 
 Conditions score, equal weight, with two other weightings as a check:
 
-- Rail service: weekday departures and off-peak plus weekend departures
+- Rail service: AM-peak headway toward Union, reversed, the longest midday gap, reversed, weekday span, and weekend span
 - Local connections: AM-peak bus arrivals, and the median AM-peak scheduled wait, reversed so a long wait scores low
 - Walk access: people plus jobs in the walkshed, and walk reach
 - Parking headroom: one minus 2019 mean weekday occupancy, only for origin stations with at least 50 spaces
-- Fare: published fare to Union per $10,000 of shed household income, reversed so a heavier burden scores low
+- Fare: generalized cost of a scheduled trip to Union per $10,000 of shed household income, reversed so a heavier cost scores low
+
+The generalized cost is the published fare plus a value of time times in-vehicle minutes plus frequency delay. The value of time is half the shed median household income, spread over 2,080 hours, then converted to dollars per minute. Frequency delay is half the AM-peak headway, the wait if the passenger does not time the arrival. I leave walk time and the bus-to-train wait out of this sum. Those minutes already sit in the walk score and the feeder score.
+
+The GO fare file has one price for each zone pair. I do not invent a PRESTO discount. I rerun the fare deficit after subtracting $1 from every fare, after a 10% reduction, with the frequency delay at a quarter of the headway, and with the value of time at 35% and at 70% of the shed wage. I report the stations whose largest deficit changes.
 
 A missing parking score is left out and the other weights are renormalized. Destination stations, where jobs in the walkshed exceed residents, do not get a parking penalty.
 
-The quadrant split is the median of the market score and the median of the conditions score. Priority means market at or above the median and conditions below the median.
+The quadrant split is the median of the market score and the median of the conditions score. Priority means market at or above the median and conditions below the median. I also record how many points the conditions score sits below that median. A station within 5 points of either median is near the cut. I recompute priority membership at the 40th and the 60th percentile of the conditions score, holding the market cut at the median. A station below the 40th is also below the median and below the 60th, so that station is in the priority set at all three cuts. A station that is priority at the median and not at the 40th is threshold-sensitive. A station that would join only at the 60th is named separately.
 
 ## Primary likely constraint
 
@@ -62,6 +77,14 @@ The reference group is the stations in the high-market, strong-conditions quadra
 Land use replaces that label when the housing-growth rank is at least 67 and the walk-catchment rank is 33 or lower. The market is being carried by growth that has not yet produced a walkable station. I keep the largest numeric deficit beside that label. The share is the share of that numeric deficit. It is not a share I assign to the land-use rule.
 
 I repeat the deficit against the median of the station's own line. If the label changes, I flag it. I do not treat that station as a firm recommendation.
+
+For each priority station, and for the Kitchener case stations, I write one evidence row. It carries the primary label, the second-largest numeric deficit even when that deficit is not a tie, the raw numbers behind the label, the condition with the smallest deficit, and a confidence:
+
+- High, when the largest deficit is at least half of the positive gaps, it is not a tie, the corridor label agrees, the station is not near the cut, and land use did not replace the numeric deficit.
+- Low, when land use replaced a larger numeric deficit, or the largest deficit is under 35% of the positive gaps.
+- Medium otherwise, including a tie, a corridor disagreement, or a station near the cut.
+
+The second-largest deficit is always recorded. The tie flag still requires the two deficits to sit within 10 points.
 
 ## What I left out
 

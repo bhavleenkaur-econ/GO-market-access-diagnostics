@@ -110,8 +110,26 @@ KITCHENER_CASE = ["KI", "GL", "AC", "GE", "MO", "BR", "BE"]
 # Analysis 2, the primary likely constraint.
 TIE_MARGIN = 10
 CLEAR_SHARE = 0.5
+LOW_SHARE = 0.35
 LAND_USE_GROWTH_RANK = 67
 LAND_USE_WALK_RANK = 33
+
+# A station within this many points of either median is too close to the cut to treat as a firm class.
+NEAR_CUT_POINTS = 5
+
+# Generalized cost. The value of time is a share of the shed's median household income,
+# spread over a full-time year. It is a stated assumption, not a measured wage.
+ANNUAL_HOURS = 2080
+VOT_WAGE_SHARE = 0.5
+VOT_SENSITIVITY = (0.35, 0.70)
+# Half the headway is the wait if the passenger does not time the arrival.
+# A quarter of the headway is the allowance if the passenger knows the timetable.
+FREQUENCY_DELAY_SHARE = 0.5
+FREQUENCY_DELAY_TIMED = 0.25
+# The GTFS fare file has one price per zone pair. These two reductions are a sensitivity,
+# not a published PRESTO tariff.
+FARE_FLAT_DISCOUNT = 1.0
+FARE_PERCENT_DISCOUNT = 0.10
 
 # Destination-leaning stations have more jobs than residents inside the walkshed.
 DESTINATION_JOBS_TO_POP = 1.0

@@ -4,6 +4,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 from . import config as C
 
@@ -25,23 +26,76 @@ def _save(fig, name):
 
 def quadrant(scored):
     df = scored[scored["in_score"]].copy()
-    fig, ax = plt.subplots(figsize=(8.2, 6.2))
+    fig, ax = plt.subplots(figsize=(11.6, 7.4))
     colors = {
         "priority": "#b45309",
         "market and conditions": "#1f6f5b",
         "conditions ahead of market": "#3b6ea5",
         "market and conditions both thin": "#8a8175",
     }
-    for name, group in df.groupby("quadrant"):
-        ax.scatter(group.market_score, group.conditions_score, s=36, c=colors.get(name, "#444"), label=name, zorder=3)
-    for _, r in df[df.quadrant.eq("priority")].iterrows():
-        ax.annotate(r.station_name, (r.market_score, r.conditions_score), fontsize=7, xytext=(4, 3), textcoords="offset points")
-    ax.axvline(scored.attrs["market_median"], color="#888", lw=0.6)
-    ax.axhline(scored.attrs["conditions_median"], color="#888", lw=0.6)
+    legend_names = {
+        "priority": "Priority",
+        "market and conditions": "Market and conditions",
+        "conditions ahead of market": "Conditions ahead of market",
+        "market and conditions both thin": "Market and conditions both thin",
+    }
+    draw_order = [
+        "market and conditions both thin",
+        "conditions ahead of market",
+        "market and conditions",
+        "priority",
+    ]
+    for name in draw_order:
+        group = df[df.quadrant.eq(name)]
+        ax.scatter(
+            group.market_score,
+            group.conditions_score,
+            s=64 if name == "priority" else 28,
+            c=colors[name],
+            label=legend_names[name],
+            zorder=4 if name == "priority" else 3,
+            linewidths=0,
+        )
+    ax.axvline(scored.attrs["market_median"], color="#b7b1a8", lw=0.7, zorder=1)
+    ax.axhline(scored.attrs["conditions_median"], color="#b7b1a8", lw=0.7, zorder=1)
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0, 100)
     ax.set_xlabel("Market score, 0 to 100")
     ax.set_ylabel("Enabling-conditions score, 0 to 100")
     ax.set_title("Where the market is ahead of the conditions")
-    ax.legend(frameon=False, fontsize=8, loc="lower left")
+    # Names sit just to the right of the axes, packed into the same vertical band as the
+    # priority stations. Spreading them over the full height sent the lines through the
+    # upper quadrants.
+    priority = df[df.quadrant.eq("priority")].sort_values(["conditions_score", "market_score"])
+    label_box = {"boxstyle": "square,pad=0.12", "facecolor": "white", "edgecolor": "none", "alpha": 0.94}
+    n = len(priority)
+    gap = 3.15
+    top = min(54, float(priority.conditions_score.max()) + 4)
+    label_ys = [top - gap * (n - 1 - i) for i in range(n)]
+    for y_label, r in zip(label_ys, priority.itertuples()):
+        ann = ax.annotate(
+            r.station_name,
+            xy=(r.market_score, r.conditions_score),
+            xytext=(103, y_label),
+            textcoords="data",
+            fontsize=8,
+            color="#7c3a12",
+            va="center",
+            ha="left",
+            arrowprops={"arrowstyle": "-", "color": "#c4a484", "lw": 0.6, "shrinkA": 0, "shrinkB": 0},
+            bbox=label_box,
+            annotation_clip=False,
+            zorder=6,
+        )
+        ann.set_clip_on(False)
+    ax.legend(
+        frameon=False,
+        fontsize=9,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=2,
+    )
+    fig.subplots_adjust(right=0.74, bottom=0.18)
     _save(fig, "quadrant.png")
 
 
@@ -51,14 +105,25 @@ def deficits(scored):
         return
     cols = [f"deficit_{c}" for c in C.CONDITIONS]
     show = df.set_index("station_name")[cols].rename(columns=lambda c: C.CONDITION_LABELS[c.replace("deficit_", "")])
-    fig, ax = plt.subplots(figsize=(9, max(3.5, 0.38 * len(show))))
-    show.plot.barh(ax=ax, width=0.8)
-    ax.axvline(0, color="#444", lw=0.6)
+    palette = ["#1f4e79", "#c47b2b", "#1f6f5b", "#9b2335", "#6b3fa0"]
+    fig, ax = plt.subplots(figsize=(10.4, 7.6))
+    show.plot.barh(ax=ax, width=0.84, color=palette, legend=False, zorder=3)
+    ax.axvline(0, color="#444", lw=0.6, zorder=2)
+    ax.grid(axis="x", color="#ece7df", lw=0.6, zorder=0)
+    ax.set_axisbelow(True)
     ax.set_xlabel("Points below the reference stations")
     ax.set_ylabel("")
     ax.set_title("How far each priority station sits below the reference stations")
-    ax.legend(frameon=False, fontsize=8, ncol=3)
+    ax.legend(
+        handles=[Patch(facecolor=color, label=name) for color, name in zip(palette, show.columns)],
+        frameon=False,
+        fontsize=9,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.14),
+        ncol=3,
+    )
     ax.invert_yaxis()
+    fig.subplots_adjust(bottom=0.2, left=0.24)
     _save(fig, "deficits.png")
 
 

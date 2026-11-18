@@ -1,6 +1,33 @@
 {
   "market_median": 50.71428571428572,
-  "conditions_median": 48.11991028295377,
+  "conditions_median": 47.45287698412698,
+  "conditions_p40": 43.42555210489993,
+  "conditions_p60": 53.69948240165631,
+  "priority_clear": [
+    "BM",
+    "ET",
+    "GO",
+    "LA",
+    "MK",
+    "ML",
+    "MR",
+    "OL",
+    "OR",
+    "OS",
+    "RI",
+    "UI"
+  ],
+  "priority_threshold_sensitive": [
+    "KI",
+    "MJ",
+    "MP"
+  ],
+  "priority_looser_only": [
+    "DW",
+    "GL",
+    "MO",
+    "SR"
+  ],
   "priority_by_scheme": {
     "equal": [
       "BM",
@@ -8,6 +35,7 @@
       "GO",
       "KI",
       "LA",
+      "MJ",
       "MK",
       "ML",
       "MP",
@@ -24,6 +52,7 @@
       "ET",
       "GO",
       "LA",
+      "MJ",
       "MK",
       "ML",
       "MP",
@@ -37,16 +66,16 @@
     "service_heavy": [
       "BM",
       "ET",
-      "GL",
       "GO",
       "KI",
       "LA",
+      "MJ",
       "MK",
       "ML",
+      "MP",
       "MR",
       "OL",
       "OR",
-      "OS",
       "RI",
       "SR",
       "UI"
@@ -57,28 +86,43 @@
     "ET",
     "GO",
     "LA",
+    "MJ",
     "MK",
     "ML",
+    "MP",
     "MR",
     "OL",
     "OR",
-    "OS",
     "RI",
     "UI"
   ],
   "weight_spearman": {
-    "equal_vs_access_heavy": 0.9701513428396465,
-    "equal_vs_service_heavy": 0.9735106289913393,
-    "access_heavy_vs_service_heavy": 0.9191321844108126
+    "equal_vs_access_heavy": 0.9764500043740704,
+    "equal_vs_service_heavy": 0.9796343277053625,
+    "access_heavy_vs_service_heavy": 0.9359986002974366
   },
   "reference_median": {
-    "service": 76.78571428571428,
-    "feeder": 66.9047619047619,
-    "walk": 65.71428571428572,
-    "parking": 65.21739130434783,
-    "fare": 68.57142857142857
+    "service": 57.232142857142854,
+    "feeder": 67.30158730158729,
+    "walk": 65.35714285714286,
+    "parking": 69.56521739130434,
+    "fare": 72.85714285714286
   },
-  "reference_n": 21,
+  "reference_n": 20,
+  "fare_sensitivity": {
+    "single_gtfs_price": true,
+    "flat_discount": 1.0,
+    "percent_discount": 0.1,
+    "labels_changed": {
+      "flat_discount": [],
+      "percent_discount": [],
+      "timed_arrival": [
+        "Mount Pleasant"
+      ],
+      "vot_low": [],
+      "vot_high": []
+    }
+  },
   "weekday": "20261118",
   "saturday": "20261121",
   "sunday": "20261122"

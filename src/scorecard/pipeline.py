@@ -20,23 +20,33 @@ def run(save=True):
     table, walks, sheds = features.build(stations, service, fares, feeders, waits, park)
     table = score.score(table)
     table = likely.diagnose(table)
+    sensitivity = score.fare_sensitivity(table)
     recs = recommendations.build(table)
+    evidence = likely.evidence_frame(table)
 
     meta = {
         "market_median": table.attrs.get("market_median"),
         "conditions_median": table.attrs.get("conditions_median"),
+        "conditions_p40": table.attrs.get("conditions_p40"),
+        "conditions_p60": table.attrs.get("conditions_p60"),
+        "priority_clear": table.attrs.get("priority_clear"),
+        "priority_threshold_sensitive": table.attrs.get("priority_threshold_sensitive"),
+        "priority_looser_only": table.attrs.get("priority_looser_only"),
         "priority_by_scheme": table.attrs.get("priority_by_scheme"),
         "priority_stable": table.attrs.get("priority_stable"),
         "weight_spearman": table.attrs.get("weight_spearman"),
         "reference_median": table.attrs.get("reference_median"),
         "reference_n": table.attrs.get("reference_n"),
+        "fare_sensitivity": sensitivity,
         "weekday": C.GO_WEEKDAY,
         "saturday": C.GO_SATURDAY,
         "sunday": C.GO_SUNDAY,
     }
     if save:
+        C.REPORTS.mkdir(parents=True, exist_ok=True)
         table.drop(columns=[], errors="ignore").to_csv(C.PROCESSED / "station_scorecard.csv", index=False)
         recs.to_csv(C.PROCESSED / "recommendations.csv", index=False)
+        evidence.to_csv(C.REPORTS / "evidence.csv", index=False)
         feed_dates.to_csv(C.PROCESSED / "feeder_service_dates.csv", index=False)
         waits.to_parquet(C.PROCESSED / "transfer_waits.parquet", index=False)
         walks.to_crs(C.CRS_WGS84).to_parquet(C.PROCESSED / "walksheds.parquet")

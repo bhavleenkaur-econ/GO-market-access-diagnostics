@@ -73,6 +73,24 @@ def _zone_counts(zones, das, jobs, prefix):
     return out
 
 
+def trip_cost(fare, income, ivt_min, headway_min, wage_share, delay_share):
+    """Generalized cost of one scheduled trip to Union, and that cost per $10,000 of income.
+
+    Cost is the published fare plus the value of in-vehicle time and frequency delay.
+    The value of time is `wage_share` of the shed median household income, spread over
+    ANNUAL_HOURS. Frequency delay is `delay_share` of the AM-peak headway.
+    """
+    fare = pd.Series(fare, dtype="float64")
+    income = pd.Series(income, dtype="float64")
+    ivt_min = pd.Series(ivt_min, dtype="float64")
+    headway_min = pd.Series(headway_min, dtype="float64")
+    vot_per_min = wage_share * income / C.ANNUAL_HOURS / 60.0
+    cost = fare + vot_per_min * (ivt_min + delay_share * headway_min)
+    burden = cost / income * 10000
+    usable = income.gt(0) & fare.notna() & ivt_min.notna() & headway_min.notna()
+    return cost.where(usable), burden.where(usable)
+
+
 def am_transfer_waits(waits):
     """Median scheduled bus-to-train wait in the weekday AM peak, in minutes."""
     if waits.empty:
@@ -106,7 +124,11 @@ def build(stations, service, fares, feeders, waits, park):
     base = stations.drop(columns="geometry").merge(service, on="station_id", how="left")
     base["line"] = base.lines.map(primary_line)
     base["line_name"] = base.line.map(C.LINE_NAMES)
-    base = base.merge(fares[["station_id", "fare_to_union"]], on="station_id", how="left")
+    fare_cols = ["station_id", "fare_to_union"]
+    for extra in ("fare_to_union_high", "fare_product_n"):
+        if extra in fares.columns:
+            fare_cols.append(extra)
+    base = base.merge(fares[fare_cols], on="station_id", how="left")
     base = base.merge(feeders, on="station_id", how="left")
     for col in ["feeder_am_arrivals", "feeder_day_arrivals", "feeder_routes"]:
         base[col] = base[col].fillna(0)
@@ -125,7 +147,17 @@ def build(stations, service, fares, feeders, waits, park):
     base["has_scored_lot"] = base.parking_spaces_2019.fillna(0).ge(C.PARKING_MIN_SPACES) & base.role.eq("origin")
     util = base.parking_utilization_2019.clip(upper=1)
     base["parking_headroom"] = np.where(base.has_scored_lot, 1 - util, np.nan)
-    base["fare_burden"] = np.where(base.shed_median_income > 0, base.fare_to_union / base.shed_median_income * 10000, np.nan)
+    base["sticker_burden"] = np.where(
+        base.shed_median_income > 0, base.fare_to_union / base.shed_median_income * 10000, np.nan
+    )
+    base["generalized_cost"], base["fare_burden"] = trip_cost(
+        base.fare_to_union,
+        base.shed_median_income,
+        base.ivt_to_union_min,
+        base.am_headway_min,
+        C.VOT_WAGE_SHARE,
+        C.FREQUENCY_DELAY_SHARE,
+    )
     base["excluded_reason"] = base.station_id.map(C.EXCLUDED)
     base["in_score"] = base.excluded_reason.isna()
     return base, walks, sheds

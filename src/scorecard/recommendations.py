@@ -34,11 +34,11 @@ ACTIONS = {
         "kpi": "Weekday peak occupancy, and the share of riders arriving by local transit",
     },
     "fare": {
-        "action": "The fare to Union is high relative to household income around the station. Review the fare product before adding service that those households may not buy.",
+        "action": "The generalized cost of a scheduled trip to Union is high relative to household income around the station. That cost is the published fare plus the value of in-vehicle time and frequency delay. Review the fare product before adding service that those households may not buy.",
         "owner": "Metrolinx fare policy",
         "cost": "Low",
         "timing": "Next fare review",
-        "kpi": "Fare to Union as a share of median household income in the station shed",
+        "kpi": "Generalized cost of a trip to Union as a share of median household income in the station shed",
     },
     "land_use": {
         "action": "Current population and jobs inside the walk are thin, and the market score is carried by recent housing growth. I would treat this as a land-use question, not as a near-term service add.",

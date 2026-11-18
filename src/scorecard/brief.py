@@ -1,5 +1,7 @@
 """Write the stakeholder brief from the scored table, so every figure in the text matches the table."""
 
+import pandas as pd
+
 from . import config as C
 
 
@@ -144,6 +146,60 @@ def _findings(priority, meta, names, table):
         f"Stations that join when I weight service more heavily are: {joins}."
     )
     lines.append("")
+    clear = ", ".join(names.get(s, s) for s in (meta.get("priority_clear") or [])) or "none"
+    sensitive = ", ".join(names.get(s, s) for s in (meta.get("priority_threshold_sensitive") or [])) or "none"
+    looser = ", ".join(names.get(s, s) for s in (meta.get("priority_looser_only") or [])) or "none"
+    lines.append(
+        f"The median is one cut. I also split the conditions score at the 40th percentile "
+        f"({_n(meta.get('conditions_p40'), 1)}) and the 60th ({_n(meta.get('conditions_p60'), 1)}). "
+        f"Stations in the priority set at all three cuts are: {clear}. "
+        f"Stations that are priority at the median, and not at the 40th, are threshold-sensitive: {sensitive}. "
+        f"Stations that would join only if I moved the cut up to the 60th are: {looser}."
+    )
+    lines.append("")
+    sens = meta.get("fare_sensitivity") or {}
+    changed = sens.get("labels_changed") or {}
+
+    def _who(key):
+        vals = changed.get(key) or []
+        return ", ".join(vals) if vals else "none"
+
+    lines.append(
+        "The GTFS fare file has one price per zone pair, so I do not apply a PRESTO discount I cannot see. "
+        f"I recomputed the fare deficit after subtracting ${float(sens.get('flat_discount') or 0):.0f} from "
+        f"every fare, after a {100 * float(sens.get('percent_discount') or 0):.0f}% reduction, with the "
+        "frequency delay set to a quarter of the headway, and with the value of time at 35% and at 70% of "
+        "the shed wage. The largest deficit changes under the flat reduction at: "
+        f"{_who('flat_discount')}. Under the percent reduction: {_who('percent_discount')}. "
+        f"Under a timed arrival: {_who('timed_arrival')}. Under the lower value of time: {_who('vot_low')}. "
+        f"Under the higher value of time: {_who('vot_high')}."
+    )
+    lines.append("")
+    return lines
+
+
+def _evidence(table):
+    focus = table[table.quadrant.eq("priority") | table.station_id.isin(C.KITCHENER_CASE)].sort_values(
+        ["quadrant", "market_score"], ascending=[True, False]
+    )
+    lines = ["## Competing explanations", ""]
+    lines.append(
+        "For each priority station, and for the Kitchener stations I look at up close, I set the label "
+        "next to the evidence that supports it and the evidence that cuts against it. Confidence is high "
+        "only when one deficit is at least half of the gap, the station's own line agrees, the land-use "
+        "rule did not replace the deficit, and the station is not within 5 points of a median."
+    )
+    lines.append("")
+    lines.append("| Station | Primary | Second | Confidence | Supporting evidence | Contradictory evidence |")
+    lines.append("| --- | --- | --- | --- | --- | --- |")
+    for row in focus.itertuples():
+        primary = C.CONDITION_LABELS.get(row.primary_likely, row.primary_likely)
+        second = C.CONDITION_LABELS.get(row.runner_up, "") if pd.notna(row.runner_up) else ""
+        lines.append(
+            f"| {row.station_name} | {primary} | {second} | {row.confidence} | "
+            f"{row.supporting_evidence} | {row.contradictory_evidence} |"
+        )
+    lines.append("")
     return lines
 
 
@@ -151,8 +207,9 @@ def _kitchener(table, meta):
     lines = ["## Kitchener line", ""]
     kit = table[table.station_id.isin(C.KITCHENER_CASE)].sort_values("weekday_to_union")
     bits = [
-        f"{r.station_name}: {r.am_peak_to_union:.0f} AM peak trips toward Union, "
-        f"{r.midday_departures:.0f} midday departures, {r.saturday_departures:.0f} Saturday departures"
+        f"{r.station_name}: AM headway {_n(r.am_headway_min)} minutes, longest midday gap "
+        f"{_n(r.midday_max_gap_min)} minutes, trains from {r.first_departure_clock} to {r.last_departure_clock}, "
+        f"weekend span {_n(r.weekend_span_hours, 1)} hours"
         for r in kit.itertuples()
     ]
     lines.append(
@@ -164,11 +221,18 @@ def _kitchener(table, meta):
     if len(guelph):
         g = guelph.iloc[0]
         fare_label = C.CONDITION_LABELS.get(g.numeric_primary, g.numeric_primary)
+        gap = float(g.conditions_gap) if pd.notna(g.conditions_gap) else 0.0
+        side = "below" if gap > 0 else "above"
+        near = (
+            " It is within 5 points of a median, so I do not treat that side of the cut as a firm class."
+            if bool(g.near_cut) else ""
+        )
+        in_set = " It is in the priority set." if g.quadrant == "priority" else " It is not in the priority set."
         lines.append(
             f"Guelph Central is the station I can check on the ground. Its market score is {g.market_score:.0f} "
             f"and its conditions score is {g.conditions_score:.1f}. The conditions median is "
-            f"{meta.get('conditions_median'):.1f}, so Guelph sits just on the strong-conditions side of the "
-            f"split and I leave it out of the priority set. The largest deficit against the reference stations "
+            f"{meta.get('conditions_median'):.1f}, so Guelph sits {abs(gap):.1f} points {side} the conditions cut."
+            f"{in_set}{near} The largest deficit against the reference stations "
             f"is still {str(fare_label).lower()}, at {g.primary_deficit:.0f} points. "
             f"The walk catchment has about {_n(g.walk_pop, 0)} residents and {_n(g.walk_jobs, 0)} jobs, and the "
             f"station shed has about {_n(g.shed_pop, 0)} residents. The census subdivision sends "
@@ -186,16 +250,19 @@ def _kitchener(table, meta):
         equal, access, service = set(schemes.get("equal") or []), set(schemes.get("access_heavy") or []), set(schemes.get("service_heavy") or [])
         weight = []
         if "KI" in equal and "KI" not in access:
-            weight.append("When I weight access more heavily, Kitchener leaves the priority set, because the walk catchment is already strong and the gap is the fare.")
+            weight.append("When I weight access more heavily, Kitchener leaves the priority set.")
         if "KI" in service:
             weight.append("When I weight service more heavily, Kitchener stays in the priority set.")
         if "GL" not in equal and "GL" in service:
             weight.append("Under that same service weighting, Guelph Central joins the priority set.")
         place = "is in the priority set" if k.quadrant == "priority" else "is not in the priority set"
+        deficit_name = C.CONDITION_LABELS.get(k.numeric_primary, k.numeric_primary)
         lines.append(
-            f"Kitchener {place}. The fare to Union is ${k.fare_to_union:.2f}, against a walk "
-            f"catchment of about {_n(k.walk_pop, 0)} residents and {_n(k.walk_jobs, 0)} jobs, so the thin "
-            f"condition is the fare, not the walk. " + " ".join(weight)
+            f"Kitchener {place}. The published fare to Union is ${k.fare_to_union:.2f}. "
+            f"The scheduled ride is {_n(k.ivt_to_union_min, 0)} minutes, the AM headway toward Union is "
+            f"{_n(k.am_headway_min, 0)} minutes, and the generalized cost at half the shed wage is "
+            f"${k.generalized_cost:.2f}. The walk catchment has about {_n(k.walk_pop, 0)} residents and "
+            f"{_n(k.walk_jobs, 0)} jobs. The largest deficit is {str(deficit_name).lower()}. " + " ".join(weight)
         )
         lines.append("")
     et = table[table.station_id.eq("ET")]
@@ -233,16 +300,20 @@ def write(table, recs, meta):
     lines.append("## What I did, in order")
     lines.append("")
     lines.append(
-        f"I first took the current GO and UP Express schedules and counted trains on Wednesday "
+        f"I first took the current GO and UP Express schedules for Wednesday "
         f"{C.GO_WEEKDAY[:4]}-{C.GO_WEEKDAY[4:6]}-{C.GO_WEEKDAY[6:]}, the Saturday, and the Sunday inside that "
-        "feed. I then placed every local bus stop within 250 m of a station, using the latest open feed from "
-        "each of 14 municipal operators, and measured the scheduled wait from an arriving bus to the next "
-        "train toward Union. I then built two catchments. The walk catchment is the street network within "
-        "800 m. The station shed is the area closer to that station than to any other, capped at 10 km. "
-        "I put 2021 Census population, jobs, recent housing, work from home, and the share of commuters "
-        "whose usual workplace is Toronto into those catchments. I used the published GO fare to Union and "
-        "the 2019 parking file as the fare and parking conditions. Only after that table was complete did I "
-        "score the stations and name a primary likely constraint."
+        "feed. I measured the AM headway toward Union, the longest midday gap, the weekday span from the "
+        "first train to the last, and the weekend span. Trip counts stay in the table as evidence. They do "
+        "not enter the service score. I then placed every local bus stop within 250 m of a station, using "
+        "the latest open feed from each of 14 municipal operators, and measured the scheduled wait from an "
+        "arriving bus to the next train toward Union. I then built two catchments. The walk catchment is "
+        "the street network within 800 m. The station shed is the area closer to that station than to any "
+        "other, capped at 10 km. I put 2021 Census population, jobs, recent housing, work from home, and "
+        "the share of commuters whose usual workplace is Toronto into those catchments. For the fare "
+        "condition I used a generalized cost: the published fare to Union, plus a value of time applied to "
+        "the scheduled ride and to half the AM headway. The value of time is half the shed's median "
+        "household income, spread over 2,080 hours. Only after that table was complete did I score the "
+        "stations and name a primary likely constraint."
     )
     lines.append("")
     lines.append("## The two analyses")
@@ -252,7 +323,9 @@ def write(table, recs, meta):
         "network destination, and Stratford is outside the tracted census area, so I left both out of the "
         f"ranking. The median market score is {_n(meta.get('market_median'), 1)} and the median conditions "
         f"score is {_n(meta.get('conditions_median'), 1)}. A station above the market median and below the "
-        "conditions median is a priority: the market is ahead of the conditions."
+        "conditions median is a priority: the market is ahead of the conditions. I also mark a station that "
+        f"sits within {C.NEAR_CUT_POINTS} points of either median, because that station would change class "
+        "if the cut moved by a small amount."
     )
     lines.append("")
     lines.append(
@@ -275,6 +348,7 @@ def write(table, recs, meta):
         )
     else:
         lines.extend(_findings(priority, meta, names, table))
+    lines.extend(_evidence(table))
     lines.extend(_kitchener(table, meta))
     lines.append("## What I would measure next")
     lines.append("")
@@ -294,49 +368,12 @@ def write(table, recs, meta):
         "during a period of high work from home, and I use that as a feature of the market rather than "
         "correcting it away. Parking is a 2019 snapshot. Transfer waits are scheduled, not observed. "
         "Catchments and municipal commute shares are approximations. Service and parking were supplied "
-        "with ridership in mind, so I do not treat a score as a causal effect."
+        "with ridership in mind, so I do not treat a score as a causal effect. The generalized cost uses "
+        "the one published fare in the GTFS file, a stated value of time, and a scheduled wait. It is not "
+        "the fare a PRESTO card charges, and it is not the cost of a whole trip from the traveller's door."
     )
     lines.append("")
     path = C.REPORTS / "executive_brief.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n")
-    readme = C.ROOT / "README.md"
-    readme.write_text(
-        "\n".join(
-            [
-                "# Where GO ridership cannot show up yet",
-                "",
-                "I built this to answer one question for a Lead, Ridership Insights audience. "
-                "Which GO and UP stations have a strong travel market, but weak walk access, local connections, "
-                "rail service, parking headroom, or fare? I do not estimate boardings. Station ridership and "
-                "PRESTO are not open, and I say so in the brief.",
-                "",
-                f"I scored {len(scored)} stations. {len(priority)} fall in the priority set, where the market "
-                f"score is at or above the median ({_n(meta.get('market_median'), 1)}) and the conditions score "
-                f"is below it ({_n(meta.get('conditions_median'), 1)}). Analysis 2 then names the primary likely "
-                "constraint from the size of each deficit, and it flags a tie when the top two are within 10 points.",
-                "",
-                "The stakeholder note is [reports/executive_brief.md](reports/executive_brief.md). "
-                "The methods are in [reports/methods_note.md](reports/methods_note.md). "
-                "The map is [reports/station_map.html](reports/station_map.html).",
-                "",
-                "## Reproduce",
-                "",
-                "```bash",
-                "python -m venv .venv && source .venv/bin/activate",
-                "pip install -r requirements.txt",
-                "python scripts/download_data.py",
-                "curl -L -o data/raw/osm/ontario.osm.pbf https://download.geofabrik.de/north-america/canada/ontario-latest.osm.pbf",
-                "python scripts/run_analysis.py",
-                "```",
-                "",
-                "The notebooks in `notebooks/` follow the same order I used: schedules, catchments, the quadrant, "
-                "the primary likely constraint, the Kitchener line, the transfer audit, and the recommendations. "
-                "They read the tables written by `scripts/run_analysis.py`.",
-                "",
-                "Sources and licences are in [data/SOURCES.md](data/SOURCES.md).",
-                "",
-            ]
-        )
-    )
     return path
